@@ -23,9 +23,7 @@ tasks.withType<Test> {
 }
 
 kotlin {
-    jvm {
-        withJava()
-    }
+    jvm()
     js {
         browser()
     }

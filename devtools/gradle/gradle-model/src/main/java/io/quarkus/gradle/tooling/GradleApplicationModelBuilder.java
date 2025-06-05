@@ -371,40 +371,8 @@ public class GradleApplicationModelBuilder implements ParameterizedToolingModelB
                         if (projectDep != null) {
                             boolean isKmp = projectDep.getPlugins().hasPlugin("org.jetbrains.kotlin.multiplatform");
                             if (isKmp) {
-                                final String realClassifier = toNonNullClassifier(a.getClassifier());
-
-                                final File baseDir = projectDep.getProjectDir();
-                                final File buildDir = projectDep.getBuildDir();
-
-                                final File srcCommon = new File(baseDir, "src/commonMain/kotlin");
-                                final File srcJvm = new File(baseDir, "src/jvmMain/kotlin");
-                                final File outClasses = new File(buildDir, "classes/kotlin/jvm/main");
-
-                                if (srcCommon.exists()) {
-                                    pathBuilder.add(outClasses.toPath());
-                                }
-                                if (srcJvm.exists()) {
-                                    pathBuilder.add(outClasses.toPath());
-                                }
-                                projectModule = modelBuilder.getOrCreateProjectModule(
-                                        new GAV(a.getModuleVersion().getId().getGroup(), a.getName(),
-                                                a.getModuleVersion().getId().getVersion()),
-                                        baseDir,
-                                        buildDir)
-                                        .setBuildFile(projectDep.getBuildFile().toPath());
-                                List<SourceDir> sources = new ArrayList<>();
-                                if (srcCommon.exists()) {
-                                    sources.add(SourceDir.of(srcCommon.toPath(), outClasses.toPath()));
-                                }
-                                if (srcJvm.exists()) {
-                                    sources.add(SourceDir.of(srcJvm.toPath(), outClasses.toPath()));
-                                }
-
-                                projectModule
-                                        .addArtifactSources(new DefaultArtifactSources(realClassifier, sources, List.of()));
-                                modelBuilder.addReloadableWorkspaceModule(
-                                        ArtifactKey.of(a.getModuleVersion().getId().getGroup(), a.getName(), realClassifier,
-                                                ArtifactCoords.TYPE_JAR));
+                                projectModule = registerKotlinMultiplatformJvmSources(projectDep, a, modelBuilder, depBuilder,
+                                        pathBuilder);
                             } else {
                                 projectModule = initProjectModuleAndBuildPaths(projectDep, a, modelBuilder, depBuilder,
                                         pathBuilder, SourceSet.MAIN_SOURCE_SET_NAME, false);
@@ -416,8 +384,14 @@ public class GradleApplicationModelBuilder implements ParameterizedToolingModelB
                         paths = pathBuilder.build();
                     } else if (sourceSets != null) {
                         final PathList.Builder pathBuilder = PathList.builder();
-                        projectModule = initProjectModuleAndBuildPaths(projectDep, a, modelBuilder, depBuilder,
-                                pathBuilder, SourceSet.MAIN_SOURCE_SET_NAME, false);
+                        boolean isKmp = projectDep.getPlugins().hasPlugin("org.jetbrains.kotlin.multiplatform");
+                        if (isKmp) {
+                            projectModule = registerKotlinMultiplatformJvmSources(projectDep, a, modelBuilder, depBuilder,
+                                    pathBuilder);
+                        } else {
+                            projectModule = initProjectModuleAndBuildPaths(projectDep, a, modelBuilder, depBuilder,
+                                    pathBuilder, SourceSet.MAIN_SOURCE_SET_NAME, false);
+                        }
                         paths = pathBuilder.build();
                     }
                 } else if (sourceSets != null) {
@@ -490,6 +464,63 @@ public class GradleApplicationModelBuilder implements ParameterizedToolingModelB
         appModel.addReloadableWorkspaceModule(
                 ArtifactKey.of(resolvedArtifact.getModuleVersion().getId().getGroup(), resolvedArtifact.getName(), classifier,
                         ArtifactCoords.TYPE_JAR));
+        return projectModule;
+    }
+
+    /**
+     * This guesses the source directories by KMP convention.
+     * Accessing the project's KMP plugin and getting the real sourceset + output directly
+     * is only possible for dependencies in the same project (i.e. will not work for composite builds)
+     */
+    private WorkspaceModule.Mutable registerKotlinMultiplatformJvmSources(
+            Project project,
+            ResolvedArtifact a,
+            ApplicationModelBuilder modelBuilder,
+            ResolvedDependencyBuilder dependencyBuilder,
+            PathList.Builder pathBuilder) {
+        final String realClassifier = toNonNullClassifier(a.getClassifier());
+
+        final File baseDir = project.getLayout().getProjectDirectory().getAsFile();
+        final File buildDir = project.getLayout().getBuildDirectory().getAsFile().get();
+
+        final File srcCommon = new File(baseDir, "src/commonMain/kotlin");
+        final File srcResourcesCommon = new File(baseDir, "src/commonMain/resources");
+        final File srcJvm = new File(baseDir, "src/jvmMain/kotlin");
+        final File srcResourcesJvm = new File(baseDir, "src/jvmMain/resources");
+        final File outClasses = new File(buildDir, "classes/kotlin/jvm/main");
+        final File outResources = new File(buildDir, "processedResources/jvm/main");
+
+        List<SourceDir> sources = new ArrayList<>();
+        if (srcCommon.exists()) {
+            sources.add(SourceDir.of(srcCommon.toPath(), outClasses.toPath()));
+            pathBuilder.add(outClasses.toPath());
+        }
+        if (srcJvm.exists()) {
+            sources.add(SourceDir.of(srcJvm.toPath(), outClasses.toPath()));
+            pathBuilder.add(outClasses.toPath());
+        }
+        if (srcResourcesCommon.exists()) {
+            sources.add(SourceDir.of(srcResourcesCommon.toPath(), outResources.toPath()));
+            pathBuilder.add(outResources.toPath());
+        }
+        if (srcResourcesJvm.exists()) {
+            sources.add(SourceDir.of(srcResourcesJvm.toPath(), outResources.toPath()));
+            pathBuilder.add(outResources.toPath());
+        }
+
+        WorkspaceModule.Mutable projectModule = modelBuilder.getOrCreateProjectModule(
+                new GAV(a.getModuleVersion().getId().getGroup(), a.getName(),
+                        a.getModuleVersion().getId().getVersion()),
+                baseDir,
+                buildDir)
+                .setBuildFile(project.getBuildFile().toPath());
+
+        projectModule
+                .addArtifactSources(new DefaultArtifactSources(realClassifier, sources, List.of()));
+        modelBuilder.addReloadableWorkspaceModule(
+                ArtifactKey.of(a.getModuleVersion().getId().getGroup(), a.getName(), realClassifier,
+                        ArtifactCoords.TYPE_JAR));
+
         return projectModule;
     }
 
