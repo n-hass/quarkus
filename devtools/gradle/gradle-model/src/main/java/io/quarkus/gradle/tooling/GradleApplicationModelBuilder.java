@@ -369,9 +369,47 @@ public class GradleApplicationModelBuilder implements ParameterizedToolingModelB
                             projectDep = ToolingUtils.includedBuildProject(ib, compId.getProjectPath());
                         }
                         if (projectDep != null) {
-                            projectModule = initProjectModuleAndBuildPaths(projectDep, a, modelBuilder, depBuilder,
-                                    pathBuilder, SourceSet.MAIN_SOURCE_SET_NAME, false);
-                            addSubstitutedProject(pathBuilder, projectDep.getProjectDir());
+                            boolean isKmp = projectDep.getPlugins().hasPlugin("org.jetbrains.kotlin.multiplatform");
+                            if (isKmp) {
+                                final String realClassifier = toNonNullClassifier(a.getClassifier());
+
+                                final File baseDir = projectDep.getProjectDir();
+                                final File buildDir = projectDep.getBuildDir();
+
+                                final File srcCommon = new File(baseDir, "src/commonMain/kotlin");
+                                final File srcJvm = new File(baseDir, "src/jvmMain/kotlin");
+                                final File outClasses = new File(buildDir, "classes/kotlin/jvm/main");
+
+                                if (srcCommon.exists()) {
+                                    pathBuilder.add(outClasses.toPath());
+                                }
+                                if (srcJvm.exists()) {
+                                    pathBuilder.add(outClasses.toPath());
+                                }
+                                projectModule = modelBuilder.getOrCreateProjectModule(
+                                        new GAV(a.getModuleVersion().getId().getGroup(), a.getName(),
+                                                a.getModuleVersion().getId().getVersion()),
+                                        baseDir,
+                                        buildDir)
+                                        .setBuildFile(projectDep.getBuildFile().toPath());
+                                List<SourceDir> sources = new ArrayList<>();
+                                if (srcCommon.exists()) {
+                                    sources.add(SourceDir.of(srcCommon.toPath(), outClasses.toPath()));
+                                }
+                                if (srcJvm.exists()) {
+                                    sources.add(SourceDir.of(srcJvm.toPath(), outClasses.toPath()));
+                                }
+
+                                projectModule
+                                        .addArtifactSources(new DefaultArtifactSources(realClassifier, sources, List.of()));
+                                modelBuilder.addReloadableWorkspaceModule(
+                                        ArtifactKey.of(a.getModuleVersion().getId().getGroup(), a.getName(), realClassifier,
+                                                ArtifactCoords.TYPE_JAR));
+                            } else {
+                                projectModule = initProjectModuleAndBuildPaths(projectDep, a, modelBuilder, depBuilder,
+                                        pathBuilder, SourceSet.MAIN_SOURCE_SET_NAME, false);
+                                addSubstitutedProject(pathBuilder, projectDep.getProjectDir());
+                            }
                         } else {
                             addSubstitutedProject(pathBuilder, includedBuild.getProjectDir());
                         }
