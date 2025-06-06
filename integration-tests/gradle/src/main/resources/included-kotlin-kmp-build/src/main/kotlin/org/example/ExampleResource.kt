@@ -9,6 +9,12 @@ import jakarta.ws.rs.core.MediaType
 class ExampleResource() {
 
     @GET
+    @Path("/kmp")
     @Produces(MediaType.TEXT_PLAIN)
-    fun hello() = SomeObject.aString
+    fun helloKmp() = SomeObject.aString
+
+    @GET
+    @Path("/jvm")
+    @Produces(MediaType.TEXT_PLAIN)
+    fun helloJvm() = AnotherObject.aString
 }

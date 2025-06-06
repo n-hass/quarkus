@@ -11,6 +11,7 @@ public class KotlinMultiplatformModuleDevModeTest extends QuarkusDevGradleTestBa
 
     @Override
     protected void testDevMode() throws Exception {
-        assertThat(getHttpResponse("/hello")).contains("hi from KMP");
+        assertThat(getHttpResponse("/hello/kmp")).contains("hi from KMP");
+        assertThat(getHttpResponse("/hello/jvm")).contains("hi from JVM-only sources");
     }
 }
